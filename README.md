@@ -1,4 +1,4 @@
-# CLive2022_DEVWKS-3240
+# Cisco Live US 2022 - DEVWKS-3270
 ## Version 17.8
 
 # Lab Introduction
@@ -62,69 +62,14 @@ After you approve the entry you should be able to see the following prompt:
 ![](vm_c9300_terminals.png)
 
 
-# Enhanced security via certificates (gNOI) for Model-Driven Telemetry
 
-## GNXI configuration on the Catalyst 9300
+# Review YANG Suite
 
-We will start by configuring GNXI on the Catalyst 9300 switch and then check its operational:
+Login to YANG Suite and load the CPU YANG model
 
+YANG Suite is accessible at http://localhost:18480 via the tunnel and the credentials are the same as the C9300 at admin/Cisco123
 
-![](gnxi_details.png)
-
-Type or copy/paste the following CLI commands into the switch:
-```
-conf t
-gnxi
-gnxi secure-init
-gnxi secure-server
-exit
-show gnxi state detail
-```
-
-
-
-
-You have now configured gNMI and verified that it is operational. Turn on the terminal monitor now so that events that happen next can be seen in real time on the C9300 terminal window. Enter the following command to enable terminal monitor: ***term mon***
-
-Now lets turn to the Linux VM terminal to install the certificates onto the C9300 from the VM.
-
-## Certificate provisioning on the Virtual Machine
-
-Use the 2nd terminal window to perform the following tasks in the linux terminal.
-
-Go into directory ***/home/auto/gnmi_ssl/certs*** then run the gnoi_cert command to install the certificate.
-
-Copy and paste the following command exactly as it is. Make sure you are on the correct directory before.
-
-```
-cd gnmi_ssl/certs/
-../../gnoi_cert -target_addr c9300:9339 -op provision -target_name c9300 -alsologtostderr -organization "jcohoe org" -ip_address 10.1.1.5 -time_out=10s -min_key_size=2048 -cert_id mdt_cert -state BC -country CA -ca ./rootCA.pem -key ./rootCA.key
-```
-
-![](cert_dir.png)
-
-This is going to install the certificate on the switch fromthe VM with the name "mdt_cert" that was specified (certificate for model driven telemetry)
-
-
-Verify the certificates were provisioned and installed on the Catalyst 9300
-
-One way to confirm the certificates installation is to examine the log file by running ***show log*** however since the terminal monitor is already enabled the relevant log messages are already displayed on the screen.
-
-![](gnxi_log.png)
-Use can filter the log to catch the specific message that we are looking for with the following command:
-```C9300#show log | i PKI```
-
-When gNOI cert.proto install operation is succesfull there will be a log message similar to “PKI-6-TRUSTPOINT_CREATE” which is seen on the C9300 terminal window.
-
-
-Verify the certificates are in use now.
-
-![](gnxi_configured_arrow.png)
-
-```C9300#show gnxi state detail ```
-
-Note the 'Secure trustpoint' change from "Self-Signed" to the actual certificate name (mdt_cert) that was provisioned from the VM. 
-
+This is an interaction section - follow along with the proctor
 
 
 # Configuring Telemetry Subscriptions on the Catalyst 9300
@@ -203,6 +148,267 @@ The CPU Utilization streaming telemetry data, the average and current memory c
 
 This shows the telemetry data that was configured earlier in this lab using Grafana for visualization of the data.
 
+# Explore the TIG
+
+# gRPC Dial-Out Configured Subscriptions
+
+Lets continue by checking the subscriptions configured on the Catalyst 9300.
+
+Step 1. Open a SSH connection to the Catalyst 9300 switch
+
+Step 2. Check the subscription configured on the device using the following IOS XE CLI
+
+**C9300# show run | sec telemetry**
+
+![](imgs/3-showrunsectel.png)
+
+Lets analyze the main parts of the subscription configuration:
+
+- telemetry ietf subscription 101 (subscription ID)
+- encoding encode-kvgpb (Key-Value pair encoding)
+- filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization/five-seconds (xpath)
+- update-policy periodic 500 (period in 1/100 seconds, 5 secs here)
+- receiver ip address 10.1.1.3 57500 protocol grpc-tcp (receivers IP, port and protocol)
+
+This telemetry configuration has already been applied to the switch. However, if it needs to be re-applied the following can be used to easily copy/paste:
+
+```
+conf t
+telemetry ietf subscription 101
+encoding encode-kvgpb
+filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization/five-seconds
+source-address 10.1.1.5
+stream yang-push
+update-policy periodic 500
+receiver ip address 10.1.1.3 57500 protocol grpc-tcp
+
+```
+
+Step 3. Verify the configured subscription using the following **telemetry** IOS XE CLIs
+
+**c9300# sh telemetry ietf subscription all**
+
+```
+
+Telemetry subscription brief
+
+ID               Type        State       Filter type
+-----------------------------------------------------
+101              Configured  Valid       xpath
+
+```
+
+
+**c9300# sh telemetry ietf subscription 101 detail**
+
+```
+Telemetry subscription detail:
+
+Subscription ID: 101
+Type: Configured
+State: Valid
+Stream: yang-push
+Filter:
+Filter type: xpath
+XPath: /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization/five-seconds
+Update policy:
+Update Trigger: periodic
+Period: 500
+Encoding: encode-kvgpb
+Source VRF:
+Source Address: 10.1.1.5
+Notes:
+
+Receivers:
+Address          Port             Protocol         Protocol Profil
+------------------------------------------------------------------
+10.1.1.3         57500            grpc-tcp
+
+```
+
+**c9300# sh telemetry ietf subscription 101 receiver**
+
+```
+Telemetry subscription receivers detail:
+
+Subscription ID: 101
+Address: 10.1.1.3
+Port: 57500
+Protocol: grpc-tcp
+Profile:
+State: Connected
+Explanation:
+```
+
+
+The State should report **Connected**.
+
+If that state does not show Connected, for example, if it is the  "Connecting " state, then simple remove and re-add the telemetry configuration before continuing with the next steps and troubleshooting:
+
+```
+conf t
+no telemetry ietf subscription 101
+telemetry ietf subscription 101
+encoding encode-kvgpb
+filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization/five-seconds
+source-address 10.1.1.5
+stream yang-push
+update-policy periodic 500
+receiver ip address 10.1.1.3 57500 protocol grpc-tcp
+```
+
+Note: If the state does not show  "Connected" then ensure the Docker container with the Telegraf receiver is running correctly. Follow the next steps to confirm status of each component.
+
+
+## Telegraf, Influx, Grafana (TIG)
+
+![](imgs/4-mdt-solution.png)
+
+Telegraf is the tool that receives and decodes the telemetry data that is sent from the IOS XE devices. It processes the data and sends it into the InfluxDB datastore, where Grafana can access it in order to create visualizations.
+
+Telegraf runs inside the  "tig_mdt" Docker container. To connect to this container from the Ubuntu host follow the steps below:
+
+```
+auto@automation:~$ docker ps
+```
+
+![](imgs/5-docker_ps.png)
+
+```
+auto@automation:~$ docker exec -it tig_mdt /bin/bash
+
+ <You are now within the Docker container>
+
+# cd /root/telegraf
+# ls
+```
+
+There is one file for each telemetry interface: **NETCONF**, **gRPC**, and **gNMI**. Review each file to understand which. YANG data is being collected by which interface.
+
+```
+# cat telegraf-grpc.conf
+# cat telegraf-gnmi.conf
+# cat telegraf-netconf.conf
+```
+
+![](imgs/6-docker_exec_cat_grpc.png)
+
+Inside the Docker container navigate to the telegraf directory and review the configuration file and log by tailing the log file with the command **tail -F /tmp/telegraf-grpc.log** 
+
+The **telegraf-grpc.conf** configuration file shows us the following:
+
+**gRPC Dial-Out Telemetry Input:** This defines the telegraf plugin (cisco\_telemetry\_mdt) that is being used to receive the data, as well as the port (57500)
+
+**Output Plugin:** This defines where the received data is sent to (outputs.influxdb) the database to use (telegraf) and the URL for InfluxDB ([http://127.0.0.1:8086](http://127.0.0.1:8086/))
+
+**Outputs.file** : sends a copy of the data to the text file at /root/telegraf/telegraf.log
+
+These configuration options are defined as per the README file in each of the respective input or output plugins. For more details of the cisco_telemetry_mdt plugin that is in use here, see the page at ["https://github.com/influxdata/telegraf/tree/master/plugins/inputs/cisco_telemetry_mdt"]("https://github.com/influxdata/telegraf/tree/master/plugins/inputs/cisco_telemetry_mdt")
+
+Examining the output of the telegraf.log file shows the data coming in from the IOS XE device that matches the subscription we created and do ctrl+c to stop the output
+
+**# tail -F /tmp/telegraf.log**
+
+![](imgs/7-cat_telegraf_grpc.png)
+
+## The Influx Database (influxdb)
+
+
+InfluxDB is already installed and started within the same Docker container. Lets verify it s working correctly by connecting into the Docker contain where it is running.
+
+Step 1. Verify InfluxDB is running with the command **ps xa | grep influx**
+
+```
+15 pts/0 Sl+ 1:45 /usr/bin/influxd -pidfile /var/run/influxdb/influxd.pid -config /etc/influxdb/influxdb.conf
+```
+
+Step 2. Verify the data stored on the Influx database using the command shown below:
+
+```
+root@43f8666d9ce0:~# influx
+Connected to http://localhost:8086 version 1.7.7
+InfluxDB shell version: 1.7.7
+> show databases
+name: databases
+name
+----
+_internal
+mdt_gnmi
+mdt_grpc
+cisco_mdt
+mdt_netconf
+>
+> drop database cisco_mdt
+> quit
+root@43f8666d9ce0:~#
+root@43f8666d9ce0:~#
+root@43f8666d9ce0:~#
+root@43f8666d9ce0:~#
+root@43f8666d9ce0:~#
+root@43f8666d9ce0:~#
+root@43f8666d9ce0:~# influx
+Connected to http://localhost:8086 version 1.7.7
+InfluxDB shell version: 1.7.7
+>
+> show databases
+name: databases
+name
+----
+_internal
+mdt_gnmi
+mdt_grpc
+mdt_netconf
+>
+> use mdt_grpc
+Using database mdt_grpc
+> show measurements
+name: measurements
+name
+----
+Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization
+>
+> SELECT COUNT("five_seconds") FROM "Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization"
+name: Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization
+time count
+---- -----
+0    1134
+>
+```
+
+The output above shows:
+
+- a **telegraf** dababase as defined in the Telegraf config file which holds that telemetry data
+- one measurement defined as the YANG model used for the gRPC Dial-out subscription (Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization)
+- number of publications received so far (33251).
+
+![](imgs/8-influx.png)
+
+# Grafana Dashboard
+
+Grafana is an open-source platform to build monitoring and analytics dashboards that also runs within the Docker container. Navigating to the web based user interface allows us to see the dashboard with the Model Driven Telemetry data
+
+Verify Grafana is running: with the following command: **ps xa | grep grafana**
+
+```
+44 ? Sl 0:32 /usr/sbin/grafana-server --pidfile=/var/run/grafana-server.pid --config=/etc/grafana/grafana.ini --packaging=deb cfg:default.paths.provisioning=/etc/grafana/provisioning cfg:default.paths.data=/var/lib/grafana cfg:default.paths.logs=/var/log/grafan cfg:default.paths.plugins=/var/lib/grafana/plugins**
+```
+
+Step 1. Open Firefox or Chrome and access the interface Grafana at [http://10.1.1.3:3000](http://10.1.1.3:3000/)
+
+You should see the following dashboard after logging in with admin:Cisco123
+
+![](imgs/9-grafana-grpc.png)
+
+To better understand the Grafana dashboard, lets edit the dashlet to see which data is being displayed:
+
+Step 2. Access the Grafan UI on HTT port 3000
+Step 3. Click the **"CPU Utilization"** drop-down and then select **"Edit "**
+
+![](imgs/9b-grafana-edit.png)
+
+Step 4. Review the information this is pre-configured for this particular chart, specifically the FROM and SELECT sections
+
+![](imgs/9c-grafana-details.png)
 
 # Summary
 
