@@ -50,13 +50,13 @@ Type, `yes` to continue
 
 After you approve the entry you should be able to see the following prompt:
 
-    ![](pod_login.png)
+![](pod_login.png)
 
 
 
 4. Telnet into the Catalyst 9300 into the second window that you opened before. Use the following credentials: admin / Cisco123
 
-    ![](telnet-gnmi-show.png)
+![](telnet-gnmi-show.png)
 
 5. Once you finished accesing via SSH and telnet into the VM and the switch respectively, this is how you should see them:
 ![](vm_c9300_terminals.png)
@@ -87,6 +87,7 @@ The next step is configure the telemetry subscriptions. This consists of several
 1. Specify the receiver of the traffic, in this case is the switch: 10.1.1.5. 
 
 1. Copy & paste or enter the following commands, exactly as they appear on the Catalyst 9300:
+
 ![](mdt_subscriptions.png)
 
 ```
@@ -160,7 +161,7 @@ Step 2. Check the subscription configured on the device using the following IOS 
 
 **C9300# show run | sec telemetry**
 
-![](imgs/3-showrunsectel.png)
+![](3-showrunsectel.png)
 
 Lets analyze the main parts of the subscription configuration:
 
@@ -262,7 +263,7 @@ Note: If the state does not show  "Connected" then ensure the Docker container w
 
 ## Telegraf, Influx, Grafana (TIG)
 
-![](imgs/4-mdt-solution.png)
+![](4-mdt-solution.png)
 
 Telegraf is the tool that receives and decodes the telemetry data that is sent from the IOS XE devices. It processes the data and sends it into the InfluxDB datastore, where Grafana can access it in order to create visualizations.
 
@@ -272,7 +273,7 @@ Telegraf runs inside the  "tig_mdt" Docker container. To connect to this contain
 auto@automation:~$ docker ps
 ```
 
-![](imgs/5-docker_ps.png)
+![](/5-docker_ps.png)
 
 ```
 auto@automation:~$ docker exec -it tig_mdt /bin/bash
@@ -291,7 +292,7 @@ There is one file for each telemetry interface: **NETCONF**, **gRPC**, and **gNM
 # cat telegraf-netconf.conf
 ```
 
-![](imgs/6-docker_exec_cat_grpc.png)
+![](6-docker_exec_cat_grpc.png)
 
 Inside the Docker container navigate to the telegraf directory and review the configuration file and log by tailing the log file with the command **tail -F /tmp/telegraf-grpc.log** 
 
@@ -309,7 +310,7 @@ Examining the output of the telegraf.log file shows the data coming in from the 
 
 **# tail -F /tmp/telegraf.log**
 
-![](imgs/7-cat_telegraf_grpc.png)
+![](7-cat_telegraf_grpc.png)
 
 ## The Influx Database (influxdb)
 
@@ -381,7 +382,7 @@ The output above shows:
 - one measurement defined as the YANG model used for the gRPC Dial-out subscription (Cisco-IOS-XE-process-cpu-oper:cpu-usage/cpu-utilization)
 - number of publications received so far (33251).
 
-![](imgs/8-influx.png)
+![](8-influx.png)
 
 # Grafana Dashboard
 
@@ -397,18 +398,18 @@ Step 1. Open Firefox or Chrome and access the interface Grafana at [http://10.1.
 
 You should see the following dashboard after logging in with admin:Cisco123
 
-![](imgs/9-grafana-grpc.png)
+![](9-grafana-grpc.png)
 
 To better understand the Grafana dashboard, lets edit the dashlet to see which data is being displayed:
 
 Step 2. Access the Grafan UI on HTT port 3000
 Step 3. Click the **"CPU Utilization"** drop-down and then select **"Edit "**
 
-![](imgs/9b-grafana-edit.png)
+![](9b-grafana-edit.png)
 
 Step 4. Review the information this is pre-configured for this particular chart, specifically the FROM and SELECT sections
 
-![](imgs/9c-grafana-details.png)
+![](9c-grafana-details.png)
 
 # Summary
 
